@@ -71,7 +71,7 @@ Reproduce with `uv run scripts/train_pytorch.py pi05_aloha_sim_bench_full --exp_
 The upstream PyTorch trainer has **no** LoRA/freeze support (see the warning above), so small-VRAM fine-tuning runs on the JAX path. Verified: π0.5 LoRA **fits a 24 GB GPU** — capping JAX allocation to 23.6 GB still completes training at batch 8 *and* batch 32 on an RTX 4090 (a 10 GB cap OOMs; JAX full fine-tuning needs > 48 GB).
 
 ```bash
-git clone -b jax-blackwell https://github.com/xzwgit/openpi.git
+git clone https://github.com/xzwgit/openpi.git  # default branch = cu130-blackwell
 cd openpi
 GIT_LFS_SKIP_SMUDGE=1 uv sync
 cp -r ./src/openpi/models_pytorch/transformers_replace/* .venv/lib/python3.11/site-packages/transformers/
