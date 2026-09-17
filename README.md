@@ -56,14 +56,21 @@ Client RTT adds only ~1-2 ms on localhost. On the RTX 3060 the PyTorch path is ~
 
 ## Training Benchmark
 
-Single RTX PRO 6000 Blackwell, PyTorch path (`scripts/train_pytorch.py`), real π0.5 model (3.35B params), official `lerobot/aloha_sim_transfer_cube_human` dataset, 40 steps, trainer-reported per-step GPU memory.
+Real π0.5 model (3.35B params) on the official `lerobot/aloha_sim_transfer_cube_human` dataset; benchmark configs ship with this fork and the first run computes norm stats per the official flow.
+
+**LoRA fine-tuning — JAX path** (`uv run scripts/train.py pi05_aloha_sim_bench_lora --exp_name bench`), measured on an **RTX 5090 32 GB** (reference box), steady state over 20–30 steps with `XLA_PYTHON_CLIENT_MEM_FRACTION=0.92`:
+
+| Mode | Batch | s/step (steady) | Throughput | VRAM |
+| --- | --- | --- | --- | --- |
+| LoRA (JAX) | 8 | **3.2** | ≈2.5 samples/s | fits a **24 GB** card (verified at a 23.6 GB cap) |
+| LoRA (JAX) | 32 | **5.2** | ≈6.2 samples/s | 29.4 GB pool on a 32 GB card |
+
+**Full fine-tuning — PyTorch path** (`uv run scripts/train_pytorch.py pi05_aloha_sim_bench_full --exp_name bench`) needs **≥ 48 GB**: on an RTX 5090 (32 GB) it OOMs in the Adam step even at batch 1 (31.4 GB used, 18 MiB free). Reference numbers on a 96 GB card (RTX PRO 6000 Blackwell, 40 steps):
 
 | Mode | Batch | s/step (steady) | Peak VRAM (allocated / reserved) |
 | --- | --- | --- | --- |
 | Full fine-tuning (bf16) | 32 | 3.31 | 36.6 GB / 42.1 GB |
 | Full fine-tuning (bf16) | 8 | ~2.9 | 34.6 GB / 34.8 GB |
-
-Reproduce with `uv run scripts/train_pytorch.py pi05_aloha_sim_bench_full --exp_name bench` (benchmark configs added in this fork; first run computes norm stats per the official flow).
 
 > [!WARNING]
 > **The PyTorch trainer has no LoRA / freeze support (upstream gap).** `*_lora` variants are silently ignored — the `pi05_aloha_sim_bench_lora` config trains **all** parameters, with memory and throughput identical to full fine-tuning (verified empirically). Sub-24-GB LoRA fine-tuning only exists on the JAX path. Practical implication: a 24 GB GPU (e.g. RTX 5090D v2) is **inference-only** on the PyTorch path — the static training floor (weights + grads + bf16 optimizer states) is ~34 GB even at batch 8. If you need LoRA fine-tuning on a 24 GB GPU, use the JAX path on this same branch: the `pi05_aloha_sim_bench_lora` config fits 24 GB (verified by capping JAX allocation to 23.6 GB, batch 8 and batch 32).
