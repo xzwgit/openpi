@@ -47,6 +47,20 @@ Measured with the policy server's built-in `server_timing` (the official measure
 
 Client RTT adds only ~1-2 ms on localhost. On the RTX 3060 the PyTorch path is ~19% faster than JAX while using less VRAM. For reference, the π0 paper reports 73 ms on an RTX 4090 for the (smaller) π0 model with a leaner measurement scope. Remember the first request after server start pays the one-time `torch.compile` cost on the PyTorch path (see the serving tip in the fork notice above).
 
+## Training Benchmark
+
+Single RTX PRO 6000 Blackwell, PyTorch path (`scripts/train_pytorch.py`), real π0.5 model (3.35B params), official `lerobot/aloha_sim_transfer_cube_human` dataset, 40 steps, trainer-reported per-step GPU memory.
+
+| Mode | Batch | s/step (steady) | Peak VRAM (allocated / reserved) |
+| --- | --- | --- | --- |
+| Full fine-tuning (bf16) | 32 | 3.31 | 36.6 GB / 42.1 GB |
+| Full fine-tuning (bf16) | 8 | ~2.9 | 34.6 GB / 34.8 GB |
+
+Reproduce with `uv run scripts/train_pytorch.py pi05_aloha_sim_bench_full --exp_name bench` (benchmark configs added in this fork; first run computes norm stats per the official flow).
+
+> [!WARNING]
+> **The PyTorch trainer has no LoRA / freeze support (upstream gap).** `*_lora` variants are silently ignored — the `pi05_aloha_sim_bench_lora` config trains **all** parameters, with memory and throughput identical to full fine-tuning (verified empirically). Sub-24-GB LoRA fine-tuning only exists on the JAX path. Practical implication: a 24 GB GPU (e.g. RTX 5090D v2) is **inference-only** on the PyTorch path — the static training floor (weights + grads + bf16 optimizer states) is ~34 GB even at batch 8.
+
 ## Updates
 
 - [Sept 2025] We released PyTorch support in openpi.

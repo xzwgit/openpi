@@ -965,6 +965,39 @@ _CONFIGS = [
         exp_name="debug_pi05",
         wandb_enabled=False,
     ),
+    #
+    # Training throughput benchmark configs: real pi0.5 model on the official aloha_sim dataset.
+    #
+    TrainConfig(
+        name="pi05_aloha_sim_bench_lora",
+        model=pi0_config.Pi0Config(pi05=True, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"),
+        data=LeRobotAlohaDataConfig(
+            repo_id="lerobot/aloha_sim_transfer_cube_human",
+            default_prompt="Transfer cube",
+            use_delta_joint_actions=False,
+        ),
+        batch_size=32,
+        num_train_steps=40,
+        save_interval=1000,
+        overwrite=True,
+        exp_name="bench_lora",
+        wandb_enabled=False,
+    ),
+    TrainConfig(
+        name="pi05_aloha_sim_bench_full",
+        model=pi0_config.Pi0Config(pi05=True),
+        data=LeRobotAlohaDataConfig(
+            repo_id="lerobot/aloha_sim_transfer_cube_human",
+            default_prompt="Transfer cube",
+            use_delta_joint_actions=False,
+        ),
+        batch_size=32,
+        num_train_steps=40,
+        save_interval=1000,
+        overwrite=True,
+        exp_name="bench_full",
+        wandb_enabled=False,
+    ),
     # RoboArena & PolaRiS configs.
     *roboarena_config.get_roboarena_configs(),
     *polaris_config.get_polaris_configs(),
