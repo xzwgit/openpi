@@ -1,5 +1,23 @@
 # openpi
 
+> [!IMPORTANT]
+> **Fork notice (xzwgit/openpi, branch `torch2.14-cu130-blackwell`)** — this branch switches the PyTorch stack to **torch 2.14.0+cu130** (torchvision 0.29.0 / torchaudio 2.11.0 / torchcodec 0.16.0, all sourced from the `pytorch-cu130` index) and fixes two pre-existing bugs in the PyTorch training path. It targets **Blackwell GPUs** (RTX 5090, RTX PRO 6000 — `sm_120`/`sm_100` kernels included) and has also been validated on RTX 3060 (sm_86).
+>
+> Fixed bugs (PyTorch path only, both exist upstream):
+> 1. `preprocessing_pytorch.py` could pass NHWC images to the SigLIP vision tower, which requires NCHW — crashed at training step 0 with `expected input to have 3 channels`.
+> 2. `gemma_pytorch.py` hardcoded `projection_dim = 2048`, breaking the `debug` smoke config (dummy PaliGemma variant uses width=64).
+>
+> Install this fork:
+> ```bash
+> git clone -b torch2.14-cu130-blackwell https://github.com/xzwgit/openpi.git
+> cd openpi
+> GIT_LFS_SKIP_SMUDGE=1 uv sync
+> # Required for PyTorch models (AdaRMS / precision / KV-cache patches):
+> cp -r ./src/openpi/models_pytorch/transformers_replace/* .venv/lib/python3.11/site-packages/transformers/
+> ```
+>
+> Note: the JAX stack stays at upstream pins (jax 0.5.3 + CUDA 12), which does **not** support Blackwell GPUs. On those machines use the PyTorch paths: `scripts/train_pytorch.py` for training and PyTorch-format checkpoints for serving (see "PyTorch Support" below).
+
 openpi holds open-source models and packages for robotics, published by the [Physical Intelligence team](https://www.physicalintelligence.company/).
 
 Currently, this repo contains three types of models:
