@@ -46,6 +46,8 @@ Measured with the policy server's built-in `server_timing` (the official measure
 
 | GPU | Path | infer_ms mean | p50 | p99 | Notes |
 | --- | --- | --- | --- | --- | --- |
+| **RTX 5090 (32 GB)** *(reference box, 8 GPUs)* | PyTorch 2.14.0+cu130 (`torch.compile` max-autotune) | **52.0** | 52.0 | 52.2 | ~19% faster than RTX 4090 |
+| RTX 4090 (48 GB) | PyTorch 2.14.0+cu130 (`torch.compile` max-autotune) | 65.5 | 65.7 | 71.6 | 8-GPU box |
 | RTX PRO 6000 Blackwell (96 GB) | PyTorch 2.14.0+cu130 (`torch.compile` max-autotune) | **41.8** | 41.8 | 42.3 | serving VRAM ~7.7 GB (~24 Hz) |
 | RTX 3060 (12 GB) | PyTorch 2.14.0+cu130 (`torch.compile` max-autotune) | 272.8 | 272.4 | 275.3 | serving VRAM ~7.4 GB |
 | RTX 3060 (12 GB) | JAX 0.5.3 + CUDA 12 (upstream pins) | 335.5 | 335.4 | 342.8 | serving VRAM ~9.1 GB |
@@ -68,7 +70,7 @@ Reproduce with `uv run scripts/train_pytorch.py pi05_aloha_sim_bench_full --exp_
 
 ## LoRA Fine-Tuning within 24 GB (JAX path)
 
-The upstream PyTorch trainer has **no** LoRA/freeze support (see the warning above), so small-VRAM fine-tuning runs on the JAX path. Verified: π0.5 LoRA **fits a 24 GB GPU** — capping JAX allocation to 23.6 GB still completes training at batch 8 *and* batch 32 on an RTX 4090 (a 10 GB cap OOMs; JAX full fine-tuning needs > 48 GB).
+The upstream PyTorch trainer has **no** LoRA/freeze support (see the warning above), so small-VRAM fine-tuning runs on the JAX path. Verified: π0.5 LoRA **fits a 24 GB GPU** — capping JAX allocation to 23.6 GB still completes training at batch 8 *and* batch 32 on an RTX 4090 (a 10 GB cap OOMs; JAX full fine-tuning needs > 48 GB). Also verified on **RTX 5090 32 GB**: batch 8 and batch 32 both complete within a 29.4 GB pool (use `XLA_PYTHON_CLIENT_MEM_FRACTION=0.92` on 32 GB cards — the default 75% wastes ~8 GB).
 
 ```bash
 git clone https://github.com/xzwgit/openpi.git  # default branch = cu130-blackwell
