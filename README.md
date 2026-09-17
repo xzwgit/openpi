@@ -123,6 +123,18 @@ The repo has been tested with Ubuntu 22.04, we do not currently support other op
 
 ## Installation
 
+> **⚠️ Fork install (use this instead of the commands below)** — one `uv sync` sets up **both** paths (torch 2.14.0+cu130 and jax[cuda13] 0.10.2):
+>
+> ```bash
+> git clone https://github.com/xzwgit/openpi.git   # default branch cu130-blackwell
+> cd openpi
+> GIT_LFS_SKIP_SMUDGE=1 uv sync
+> # Required for PyTorch models (AdaRMS / precision / KV-cache patches):
+> cp -r ./src/openpi/models_pytorch/transformers_replace/* .venv/lib/python3.11/site-packages/transformers/
+> ```
+>
+> The upstream commands below clone `Physical-Intelligence/openpi` and install the **old stack (torch 2.7.1 / jax 0.5.3)** which does **not** support Blackwell GPUs — kept for reference only.
+
 When cloning this repo, make sure to update submodules:
 
 ```bash
