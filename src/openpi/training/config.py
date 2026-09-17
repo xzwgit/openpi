@@ -976,6 +976,11 @@ _CONFIGS = [
             default_prompt="Transfer cube",
             use_delta_joint_actions=False,
         ),
+        freeze_filter=pi0_config.Pi0Config(
+            pi05=True, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter(),
+        # Turn off EMA for LoRA finetuning (mirrors pi0_libero_low_mem_finetune).
+        ema_decay=None,
         batch_size=32,
         num_train_steps=40,
         save_interval=1000,

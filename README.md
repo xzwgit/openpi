@@ -1,12 +1,16 @@
 # openpi
 
 > [!IMPORTANT]
-> **Fork notice (xzwgit/openpi, branch `cu130-blackwell`)** — this branch switches the PyTorch stack to **torch 2.14.0+cu130** (torchvision 0.29.0 / torchaudio 2.11.0 / torchcodec 0.16.0, all sourced from the `pytorch-cu130` index) and fixes three pre-existing bugs (two in the PyTorch training path, one in the JAX→PyTorch converter). It targets **Blackwell GPUs** (RTX 5090, RTX PRO 6000 — `sm_120`/`sm_100` kernels included) and has also been validated on RTX 3060 (sm_86).
+> **Fork notice (xzwgit/openpi, branch `cu130-blackwell`)** — this branch switches the PyTorch stack to **torch 2.14.0+cu130** (torchvision 0.29.0 / torchaudio 2.11.0 / torchcodec 0.16.0, all sourced from the `pytorch-cu130` index) and fixes seven pre-existing bugs (PyTorch training path, JAX→PyTorch converter, and JAX/flax migration). It also upgrades the JAX stack to **jax[cuda13] 0.10.2** (flax 0.12.8 / orbax 0.12.4 / numpy 2, old 0.11-format checkpoints load as-is), so **one `uv sync` gives both paths on Blackwell**: PyTorch (fastest inference, full fine-tuning) and JAX (inference + LoRA fine-tuning that fits 24 GB). Targets **Blackwell GPUs** (RTX 5090, RTX PRO 6000 — `sm_120`/`sm_100` kernels included) and validated on RTX 4090 (sm_89) and RTX 3060 (sm_86).
 >
 > Fixed bugs (all exist upstream):
 > 1. `preprocessing_pytorch.py` could pass NHWC images to the SigLIP vision tower, which requires NCHW — crashed at training step 0 with `expected input to have 3 channels`.
 > 2. `gemma_pytorch.py` hardcoded `projection_dim = 2048`, breaking the `debug` smoke config (dummy PaliGemma variant uses width=64).
 > 3. `examples/convert_jax_model_to_pytorch.py` looked for `assets/` one directory above the checkpoint, so norm stats were silently not copied and the converted checkpoint could not be served (`FileNotFoundError` on `norm_stats.json`).
+> 4. `augmax` (unmaintained) breaks under jax>=0.10 — replaced with native JAX augmentation (`openpi/models/augment.py`, semantics matched to the PyTorch path).
+> 5. `nnx_utils.state_map` used `flat_state()` / `State.map` APIs that changed in flax 0.12 — rewritten against the new flat-state API.
+> 6. `activation_sharding_constraint` trips jax>=0.10 mesh rules inside flax scans — degrades to a no-op (pure performance annotation).
+> 7. `models/model.py` needed the orbax 0.12 API for `metadata["params"]`.
 >
 > Companion fork: **[xzwgit/lerobot](https://github.com/xzwgit/lerobot)** — Hugging Face LeRobot, the PyTorch-native robotics framework that openpi uses as a data-pipeline dependency.
 >
@@ -23,7 +27,7 @@
 >
 > ⚠️ **Serving tip:** PyTorch configs default to `pytorch_compile_mode='max-autotune'`. The **first inference request after server start triggers a long one-time torch.compile (can be 15–20 min on small GPUs)** — websocket clients with short keepalive (e.g. the example client, 20 s) will time out during it. Warm up the server with a throwaway request (or set a lower compile mode in the config) before connecting real clients. After compilation, latency is stable and on par with JAX.
 >
-> Note: on this branch the JAX stack stays at upstream pins (jax 0.5.3 + CUDA 12), which does **not** support Blackwell GPUs. For JAX on Blackwell use branch **`jax-blackwell`** (jax[cuda13] 0.10.2: warmed inference ~51 ms on RTX PRO 6000, and LoRA fine-tuning that fits 24 GB — see "LoRA Fine-Tuning within 24 GB" below). This branch stays the pick for the fastest inference (42 ms on RTX PRO 6000) and for full fine-tuning (PyTorch paths).
+> Note (JAX on this branch): stack is jax[cuda13] 0.10.2 / flax 0.12.8 / orbax 0.12.4 / numpy 2.4.6 / tensorstore >= 0.1.85 and shares the environment with PyTorch. Warmed JAX inference on `pi05_droid` is ~51 ms on RTX PRO 6000. Run JAX processes with `env -u LD_LIBRARY_PATH`; after any `uv sync` reinstall the shared-path cu13 packages (`uv sync --reinstall-package nvidia-cudnn-cu13 --reinstall-package nvidia-nccl-cu13 --reinstall-package nvidia-cusparselt-cu13 --reinstall-package nvidia-nvshmem-cu13`); the `rlds` dependency group is disabled (tensorflow 2.15 requires numpy < 2).
 
 openpi holds open-source models and packages for robotics, published by the [Physical Intelligence team](https://www.physicalintelligence.company/).
 
@@ -60,9 +64,9 @@ Single RTX PRO 6000 Blackwell, PyTorch path (`scripts/train_pytorch.py`), real �
 Reproduce with `uv run scripts/train_pytorch.py pi05_aloha_sim_bench_full --exp_name bench` (benchmark configs added in this fork; first run computes norm stats per the official flow).
 
 > [!WARNING]
-> **The PyTorch trainer has no LoRA / freeze support (upstream gap).** `*_lora` variants are silently ignored — the `pi05_aloha_sim_bench_lora` config trains **all** parameters, with memory and throughput identical to full fine-tuning (verified empirically). Sub-24-GB LoRA fine-tuning only exists on the JAX path. Practical implication: a 24 GB GPU (e.g. RTX 5090D v2) is **inference-only** on the PyTorch path — the static training floor (weights + grads + bf16 optimizer states) is ~34 GB even at batch 8. If you need LoRA fine-tuning on a 24 GB GPU, use the `jax-blackwell` branch instead: its `pi05_aloha_sim_bench_lora` config fits 24 GB (verified by capping JAX allocation to 23.6 GB, batch 8 and batch 32).
+> **The PyTorch trainer has no LoRA / freeze support (upstream gap).** `*_lora` variants are silently ignored — the `pi05_aloha_sim_bench_lora` config trains **all** parameters, with memory and throughput identical to full fine-tuning (verified empirically). Sub-24-GB LoRA fine-tuning only exists on the JAX path. Practical implication: a 24 GB GPU (e.g. RTX 5090D v2) is **inference-only** on the PyTorch path — the static training floor (weights + grads + bf16 optimizer states) is ~34 GB even at batch 8. If you need LoRA fine-tuning on a 24 GB GPU, use the JAX path on this same branch: the `pi05_aloha_sim_bench_lora` config fits 24 GB (verified by capping JAX allocation to 23.6 GB, batch 8 and batch 32).
 
-## LoRA Fine-Tuning within 24 GB (via the `jax-blackwell` branch)
+## LoRA Fine-Tuning within 24 GB (JAX path)
 
 The upstream PyTorch trainer has **no** LoRA/freeze support (see the warning above), so small-VRAM fine-tuning runs on the JAX path. Verified: π0.5 LoRA **fits a 24 GB GPU** — capping JAX allocation to 23.6 GB still completes training at batch 8 *and* batch 32 on an RTX 4090 (a 10 GB cap OOMs; JAX full fine-tuning needs > 48 GB).
 
