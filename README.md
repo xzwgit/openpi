@@ -35,6 +35,18 @@ For all models, we provide _base model_ checkpoints, pre-trained on 10k+ hours o
 
 This is an experiment: $\pi_0$ was developed for our own robots, which differ from the widely used platforms such as [ALOHA](https://tonyzhaozh.github.io/aloha/) and [DROID](https://droid-dataset.github.io/), and though we are optimistic that researchers and practitioners will be able to run creative new experiments adapting $\pi_0$ to their own platforms, we do not expect every such attempt to be successful. All this is to say: $\pi_0$ may or may not work for you, but you are welcome to try it and see!
 
+## Inference Benchmark
+
+Measured with the policy server's built-in `server_timing` (the official measurement point) on `pi05_droid`: batch 1, action chunk `(15, 8)`, bfloat16, localhost websocket, 5 warmup + 50 timed requests per run.
+
+| GPU | Path | infer_ms mean | p50 | p99 | Notes |
+| --- | --- | --- | --- | --- | --- |
+| RTX PRO 6000 Blackwell (96 GB) | PyTorch 2.14.0+cu130 (`torch.compile` max-autotune) | **41.8** | 41.8 | 42.3 | serving VRAM ~7.7 GB (~24 Hz) |
+| RTX 3060 (12 GB) | PyTorch 2.14.0+cu130 (`torch.compile` max-autotune) | 272.8 | 272.4 | 275.3 | serving VRAM ~7.4 GB |
+| RTX 3060 (12 GB) | JAX 0.5.3 + CUDA 12 (upstream pins) | 335.5 | 335.4 | 342.8 | serving VRAM ~9.1 GB |
+
+Client RTT adds only ~1-2 ms on localhost. On the RTX 3060 the PyTorch path is ~19% faster than JAX while using less VRAM. For reference, the π0 paper reports 73 ms on an RTX 4090 for the (smaller) π0 model with a leaner measurement scope. Remember the first request after server start pays the one-time `torch.compile` cost on the PyTorch path (see the serving tip in the fork notice above).
+
 ## Updates
 
 - [Sept 2025] We released PyTorch support in openpi.
