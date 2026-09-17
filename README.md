@@ -16,6 +16,8 @@
 > cp -r ./src/openpi/models_pytorch/transformers_replace/* .venv/lib/python3.11/site-packages/transformers/
 > ```
 >
+> ⚠️ **The `cp` step hot-patches the installed `transformers`.** It must be **re-run whenever `transformers` is reinstalled or its version changes** (e.g. after `uv sync --reinstall`, a lockfile bump, or manually touching the package) — a plain `uv sync` keeps it intact as long as the locked `transformers==4.53.2` is unchanged. If you forget, PyTorch models fail fast at init with `transformers_replace is not installed correctly` (startup self-check via `transformers.models.siglip.check`). Only the PyTorch paths need this patch; JAX training/serving does not.
+>
 > Note: the JAX stack stays at upstream pins (jax 0.5.3 + CUDA 12), which does **not** support Blackwell GPUs. On those machines use the PyTorch paths: `scripts/train_pytorch.py` for training and PyTorch-format checkpoints for serving (see "PyTorch Support" below).
 
 openpi holds open-source models and packages for robotics, published by the [Physical Intelligence team](https://www.physicalintelligence.company/).
