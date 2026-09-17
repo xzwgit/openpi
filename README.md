@@ -45,8 +45,8 @@ To run the models in this repository, you will need an NVIDIA GPU with at least 
 
 | Mode               | Memory Required | Example GPU        |
 | ------------------ | --------------- | ------------------ |
-| Inference          | > 8 GB          | RTX 4090           |
-| Fine-Tuning (LoRA) | > 22.5 GB       | RTX 4090           |
+| Inference          | > 8 GB          | RTX 4090 / RTX 5090D v2 24G |
+| Fine-Tuning (LoRA) | > 22.5 GB       | RTX 4090 / RTX 5090D v2 24G |
 | Fine-Tuning (Full) | > 70 GB         | A100 (80GB) / H100 |
 
 The repo has been tested with Ubuntu 22.04, we do not currently support other operating systems.
