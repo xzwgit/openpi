@@ -1,7 +1,7 @@
 # openpi
 
 > [!IMPORTANT]
-> **Fork notice (xzwgit/openpi, branch `torch2.14-cu130-blackwell`)** — this branch switches the PyTorch stack to **torch 2.14.0+cu130** (torchvision 0.29.0 / torchaudio 2.11.0 / torchcodec 0.16.0, all sourced from the `pytorch-cu130` index) and fixes three pre-existing bugs (two in the PyTorch training path, one in the JAX→PyTorch converter). It targets **Blackwell GPUs** (RTX 5090, RTX PRO 6000 — `sm_120`/`sm_100` kernels included) and has also been validated on RTX 3060 (sm_86).
+> **Fork notice (xzwgit/openpi, branch `cu130-blackwell`)** — this branch switches the PyTorch stack to **torch 2.14.0+cu130** (torchvision 0.29.0 / torchaudio 2.11.0 / torchcodec 0.16.0, all sourced from the `pytorch-cu130` index) and fixes three pre-existing bugs (two in the PyTorch training path, one in the JAX→PyTorch converter). It targets **Blackwell GPUs** (RTX 5090, RTX PRO 6000 — `sm_120`/`sm_100` kernels included) and has also been validated on RTX 3060 (sm_86).
 >
 > Fixed bugs (all exist upstream):
 > 1. `preprocessing_pytorch.py` could pass NHWC images to the SigLIP vision tower, which requires NCHW — crashed at training step 0 with `expected input to have 3 channels`.
@@ -12,7 +12,7 @@
 >
 > Install this fork:
 > ```bash
-> git clone -b torch2.14-cu130-blackwell https://github.com/xzwgit/openpi.git
+> git clone -b cu130-blackwell https://github.com/xzwgit/openpi.git
 > cd openpi
 > GIT_LFS_SKIP_SMUDGE=1 uv sync
 > # Required for PyTorch models (AdaRMS / precision / KV-cache patches):
