@@ -70,7 +70,7 @@ Reproduce with `uv run scripts/train_pytorch.py pi05_aloha_sim_bench_full --exp_
 
 ## LoRA Fine-Tuning within 24 GB (JAX path)
 
-The upstream PyTorch trainer has **no** LoRA/freeze support (see the warning above), so small-VRAM fine-tuning runs on the JAX path. Verified: π0.5 LoRA **fits a 24 GB GPU** — capping JAX allocation to 23.6 GB still completes training at batch 8 *and* batch 32 on an RTX 4090 (a 10 GB cap OOMs; JAX full fine-tuning needs > 48 GB). Also verified on **RTX 5090 32 GB**: batch 8 and batch 32 both complete within a 29.4 GB pool (use `XLA_PYTHON_CLIENT_MEM_FRACTION=0.92` on 32 GB cards — the default 75% wastes ~8 GB).
+The upstream PyTorch trainer has **no** LoRA/freeze support (see the warning above), so small-VRAM fine-tuning runs on the JAX path. Verified: π0.5 LoRA **fits a 24 GB GPU** — capping JAX allocation to 23.6 GB still completes training at batch 8 *and* batch 32 on an RTX 4090 (a 10 GB cap OOMs; JAX full fine-tuning needs > 48 GB). Also verified on **RTX 5090 32 GB**: batch 8 and batch 32 both complete within a 29.4 GB pool (use `XLA_PYTHON_CLIENT_MEM_FRACTION=0.92` on 32 GB cards — the default 75% wastes ~8 GB). Single-card LoRA throughput on an RTX 5090: **3.2 s/step at batch 8** (≈2.5 samples/s) and **5.2 s/step at batch 32** (≈6.2 samples/s), measured over 20–30 steady-state steps.
 
 ```bash
 git clone https://github.com/xzwgit/openpi.git  # default branch = cu130-blackwell
