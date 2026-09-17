@@ -146,7 +146,19 @@ class Embedder(nn.Module):
         )
 
     def encode(self, x):
-        x = self.input_embedding_table[(x,)]
+        # jax >= 0.10: gather with FSDP-sharded embedding table and data-sharded
+        # token ids can no longer infer the output sharding implicitly.
+        from openpi.training import sharding as _sharding
+
+        _mesh = _sharding._MeshState.active_mesh
+        if _mesh is not None:
+            _out_sharding = jax.sharding.NamedSharding(
+                _mesh,
+                jax.sharding.PartitionSpec(_sharding.DATA_AXIS, *((None,) * (x.ndim - 1))),
+            )
+            x = self.input_embedding_table.at[x].get(out_sharding=_out_sharding)
+        else:
+            x = self.input_embedding_table[(x,)]
         x *= jnp.sqrt(self.embed_dim).astype(x.dtype)
         return x
 

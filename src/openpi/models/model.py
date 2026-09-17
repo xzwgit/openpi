@@ -180,8 +180,30 @@ def preprocess_observation(
             transforms += [
                 augmax.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.5),
             ]
-            sub_rngs = jax.random.split(rng, image.shape[0])
-            image = jax.vmap(augmax.Chain(*transforms))(sub_rngs, image)
+            # NOTE(openpi-jax-cu13 experiment): jax >= 0.8 is stricter about
+            # sharding consistency of vmap-mapped axes, and augmax internals
+            # (lax.concatenate) cannot resolve NamedSharding specs under vmap
+            # without an active jax mesh. augmax requires replicated inputs, so
+            # explicitly replicate the image batch before augmentation when
+            # training under the openpi mesh. XLA re-shards automatically for
+            # downstream consumers.
+            import os as _os
+
+            from openpi.training import sharding as _training_sharding
+
+            if _os.environ.get("OPENPI_SKIP_AUGMAX") == "1":
+                # SMOKE TEST ONLY: augmax (0.4.1) is incompatible with jax >= 0.10
+                # vmap sharding strictness. Bypass augmentation to test the rest
+                # of the training loop. NOT for real training.
+                pass
+            else:
+                _mesh = _training_sharding._MeshState.active_mesh
+                if _mesh is not None:
+                    image = jax.lax.with_sharding_constraint(
+                        image, jax.sharding.NamedSharding(_mesh, jax.sharding.PartitionSpec())
+                    )
+                sub_rngs = jax.random.split(rng, image.shape[0])
+                image = jax.vmap(augmax.Chain(*transforms))(sub_rngs, image)
 
             # Back to [-1, 1].
             image = image * 2.0 - 1.0
@@ -312,7 +334,10 @@ def restore_params(
 
     with ocp.PyTreeCheckpointer() as ckptr:
         metadata = ckptr.metadata(params_path)
-        item = {"params": metadata["params"]}
+        if hasattr(metadata, "item_metadata"):  # orbax >= 0.12 returns StepMetadata
+            item = {"params": metadata.item_metadata["params"]}
+        else:  # orbax <= 0.11 returns a plain dict
+            item = {"params": metadata["params"]}
 
         params = ckptr.restore(
             params_path,
