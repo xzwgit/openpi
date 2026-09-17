@@ -1,7 +1,7 @@
 # openpi
 
 > [!IMPORTANT]
-> **Fork notice (xzwgit/openpi, branch `torch2.14-cu130-blackwell`)** — this branch switches the PyTorch stack to **torch 2.14.0+cu130** (torchvision 0.29.0 / torchaudio 2.11.0 / torchcodec 0.16.0, all sourced from the `pytorch-cu130` index) and fixes two pre-existing bugs in the PyTorch training path. It targets **Blackwell GPUs** (RTX 5090, RTX PRO 6000 — `sm_120`/`sm_100` kernels included) and has also been validated on RTX 3060 (sm_86).
+> **Fork notice (xzwgit/openpi, branch `cu130-blackwell`)** — this branch switches the PyTorch stack to **torch 2.14.0+cu130** (torchvision 0.29.0 / torchaudio 2.11.0 / torchcodec 0.16.0, all sourced from the `pytorch-cu130` index) and fixes two pre-existing bugs in the PyTorch training path. It targets **Blackwell GPUs** (RTX 5090, RTX PRO 6000 — `sm_120`/`sm_100` kernels included) and has also been validated on RTX 3060 (sm_86).
 >
 > Fixed bugs (PyTorch path only, both exist upstream):
 > 1. `preprocessing_pytorch.py` could pass NHWC images to the SigLIP vision tower, which requires NCHW — crashed at training step 0 with `expected input to have 3 channels`.
@@ -11,7 +11,7 @@
 >
 > Install this fork:
 > ```bash
-> git clone -b torch2.14-cu130-blackwell https://github.com/xzwgit/openpi.git
+> git clone -b cu130-blackwell https://github.com/xzwgit/openpi.git
 > cd openpi
 > GIT_LFS_SKIP_SMUDGE=1 uv sync
 > # Required for PyTorch models (AdaRMS / precision / KV-cache patches):
@@ -28,7 +28,7 @@
 > - Inference: `scripts/serve_policy.py` works on Blackwell (`--port` must precede the subcommand); warmed `pi05_droid` is ~51 ms on RTX PRO 6000.
 > - Training: `scripts/train.py` runs end to end. **LoRA fine-tuning fits a 24 GB GPU** (verified by capping JAX to 23.6 GB: batch 8 and batch 32 both pass, config `pi05_aloha_sim_bench_lora`). That config sets `freeze_filter` **and** `ema_decay=None` — both are required; without them the optimizer silently covers all 3.35B parameters and OOMs even a 48 GB card. Full fine-tuning needs > 48 GB on the JAX path.
 > - Ops notes: run JAX processes with `env -u LD_LIBRARY_PATH`; after any `uv sync` reinstall the shared-path cu13 packages (`uv sync --reinstall-package nvidia-cudnn-cu13 --reinstall-package nvidia-nccl-cu13 --reinstall-package nvidia-cusparselt-cu13 --reinstall-package nvidia-nvshmem-cu13`); the `rlds` dependency group is disabled (tensorflow 2.15 requires numpy < 2).
-> - For Blackwell PyTorch paths see branch `torch2.14-cu130-blackwell` (default branch): `scripts/train_pytorch.py` training and low-latency serving; note the upstream PyTorch trainer has no LoRA/freeze support.
+> - For Blackwell PyTorch paths see branch `cu130-blackwell` (default branch): `scripts/train_pytorch.py` training and low-latency serving; note the upstream PyTorch trainer has no LoRA/freeze support.
 
 openpi holds open-source models and packages for robotics, published by the [Physical Intelligence team](https://www.physicalintelligence.company/).
 
@@ -43,7 +43,7 @@ This is an experiment: $\pi_0$ was developed for our own robots, which differ fr
 
 ## LoRA Fine-Tuning within 24 GB
 
-Verified on this branch: π0.5 LoRA **fits a 24 GB GPU** — capping JAX allocation to 23.6 GB still completes training at batch 8 *and* batch 32 on an RTX 4090 (a 10 GB cap OOMs; JAX full fine-tuning needs > 48 GB — use the `torch2.14-cu130-blackwell` branch or a 96 GB card for that).
+Verified on this branch: π0.5 LoRA **fits a 24 GB GPU** — capping JAX allocation to 23.6 GB still completes training at batch 8 *and* batch 32 on an RTX 4090 (a 10 GB cap OOMs; JAX full fine-tuning needs > 48 GB — use the `cu130-blackwell` branch or a 96 GB card for that).
 
 ```bash
 # On this branch (jax-blackwell):
