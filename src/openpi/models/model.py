@@ -6,7 +6,6 @@ import logging
 import pathlib
 from typing import Generic, TypeVar
 
-import augmax
 from flax import nnx
 from flax import struct
 from flax import traverse_util
@@ -17,6 +16,7 @@ import orbax.checkpoint as ocp
 import safetensors
 import torch
 
+from openpi.models import augment
 from openpi.models_pytorch import pi0_pytorch
 from openpi.shared import image_tools
 import openpi.shared.array_typing as at
@@ -156,6 +156,9 @@ def preprocess_observation(
     if not set(image_keys).issubset(observation.images):
         raise ValueError(f"images dict missing keys: expected {image_keys}, got {list(observation.images)}")
 
+    if train and rng is None:
+        raise ValueError("rng is required when train=True.")
+
     batch_shape = observation.state.shape[:-1]
 
     out_images = {}
@@ -166,44 +169,28 @@ def preprocess_observation(
             image = image_tools.resize_with_pad(image, *image_resolution)
 
         if train:
-            # Convert from [-1, 1] to [0, 1] for augmax.
+            # Convert from [-1, 1] to [0, 1] for augmentation.
             image = image / 2.0 + 0.5
 
-            transforms = []
-            if "wrist" not in key:
-                height, width = image.shape[1:3]
-                transforms += [
-                    augmax.RandomCrop(int(width * 0.95), int(height * 0.95)),
-                    augmax.Resize(width, height),
-                    augmax.Rotate((-5, 5)),
-                ]
-            transforms += [
-                augmax.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.5),
-            ]
-            # NOTE(openpi-jax-cu13 experiment): jax >= 0.8 is stricter about
-            # sharding consistency of vmap-mapped axes, and augmax internals
-            # (lax.concatenate) cannot resolve NamedSharding specs under vmap
-            # without an active jax mesh. augmax requires replicated inputs, so
-            # explicitly replicate the image batch before augmentation when
-            # training under the openpi mesh. XLA re-shards automatically for
-            # downstream consumers.
+            # NOTE(openpi-jax-cu13 experiment): augmax (0.4.1) is unmaintained
+            # and incompatible with jax >= 0.10, which rejects vmap over
+            # inputs whose mapped-away axes are sharded inconsistently
+            # (sharded images vs. replicated PRNG keys). Training augmentation
+            # is therefore implemented natively in `openpi.models.augment`:
+            # stateless, explicit PRNG keys, fully vectorized over the batch
+            # (no vmap, sharding-agnostic under jit), with semantics matching
+            # the PyTorch path in `openpi/models_pytorch/preprocessing_pytorch.py`.
             import os as _os
 
-            from openpi.training import sharding as _training_sharding
-
-            if _os.environ.get("OPENPI_SKIP_AUGMAX") == "1":
-                # SMOKE TEST ONLY: augmax (0.4.1) is incompatible with jax >= 0.10
-                # vmap sharding strictness. Bypass augmentation to test the rest
-                # of the training loop. NOT for real training.
+            if _os.environ.get("OPENPI_SKIP_AUGMENTATION") == "1":
+                # SMOKE TEST ONLY: bypass augmentation to test the rest of the
+                # training loop. NOT for real training.
                 pass
             else:
-                _mesh = _training_sharding._MeshState.active_mesh
-                if _mesh is not None:
-                    image = jax.lax.with_sharding_constraint(
-                        image, jax.sharding.NamedSharding(_mesh, jax.sharding.PartitionSpec())
-                    )
-                sub_rngs = jax.random.split(rng, image.shape[0])
-                image = jax.vmap(augmax.Chain(*transforms))(sub_rngs, image)
+                # Independent draws per camera (fold in the key index) and per
+                # batch element. Wrist cameras skip the geometric transforms.
+                key_rng = jax.random.fold_in(rng, image_keys.index(key))
+                image = augment.train_image_augment(image, key_rng, geometric="wrist" not in key)
 
             # Back to [-1, 1].
             image = image * 2.0 - 1.0

@@ -64,6 +64,13 @@ class PathRegex:
 
 
 def state_map(state: nnx.State, filter: nnx.filterlib.Filter, fn: Callable[[Any], Any]) -> nnx.State:
-    """Apply a function to the leaves of the state that match the filter."""
-    filtered_keys = set(state.filter(filter).flat_state())
-    return state.map(lambda k, v: fn(v) if k in filtered_keys else v)
+    """Apply a function to the leaves of the state that match the filter.
+
+    flax>=0.12: ``flat_state()`` now yields ``(path, value)`` pairs (``Param`` objects are
+    unhashable, so ``set(...)`` raises TypeError) and ``State.map`` was removed. Split the
+    matched subtree out, transform it, and merge it back instead.
+    """
+    matched_paths = set(nnx.to_flat_state(state.filter(filter)).paths)
+    return nnx.from_flat_state(
+        [(path, fn(value) if path in matched_paths else value) for path, value in nnx.to_flat_state(state)]
+    )

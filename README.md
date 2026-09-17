@@ -22,7 +22,13 @@
 >
 > ⚠️ **Serving tip:** PyTorch configs default to `pytorch_compile_mode='max-autotune'`. The **first inference request after server start triggers a long one-time torch.compile (can be 15–20 min on small GPUs)** — websocket clients with short keepalive (e.g. the example client, 20 s) will time out during it. Warm up the server with a throwaway request (or set a lower compile mode in the config) before connecting real clients. After compilation, latency is stable and on par with JAX.
 >
-> Note: the JAX stack stays at upstream pins (jax 0.5.3 + CUDA 12), which does **not** support Blackwell GPUs. On those machines use the PyTorch paths: `scripts/train_pytorch.py` for training and PyTorch-format checkpoints for serving (see "PyTorch Support" below).
+> **JAX on Blackwell (`jax-blackwell` branch, verified on RTX PRO 6000 and RTX 4090):**
+> - JAX stack upgraded to `jax[cuda13]` 0.10.2 (flax 0.12.8, orbax 0.12.4, tensorstore >= 0.1.85, numpy 2.4.6). Old 0.11-format checkpoints load as-is.
+> - Migration fixes included: `augmax` replaced with native JAX augmentation (`openpi/models/augment.py`, same semantics as the PyTorch path); `activation_sharding_constraint` degrades to a no-op until jax >= 0.11; `nnx_utils.state_map` rewritten for the flax 0.12 API.
+> - Inference: `scripts/serve_policy.py` works on Blackwell (`--port` must precede the subcommand); warmed `pi05_droid` is ~51 ms on RTX PRO 6000.
+> - Training: `scripts/train.py` runs end to end. **LoRA fine-tuning fits a 24 GB GPU** (verified by capping JAX to 23.6 GB: batch 8 and batch 32 both pass, config `pi05_aloha_sim_bench_lora`). That config sets `freeze_filter` **and** `ema_decay=None` — both are required; without them the optimizer silently covers all 3.35B parameters and OOMs even a 48 GB card. Full fine-tuning needs > 48 GB on the JAX path.
+> - Ops notes: run JAX processes with `env -u LD_LIBRARY_PATH`; after any `uv sync` reinstall the shared-path cu13 packages (`uv sync --reinstall-package nvidia-cudnn-cu13 --reinstall-package nvidia-nccl-cu13 --reinstall-package nvidia-cusparselt-cu13 --reinstall-package nvidia-nvshmem-cu13`); the `rlds` dependency group is disabled (tensorflow 2.15 requires numpy < 2).
+> - For Blackwell PyTorch paths see branch `torch2.14-cu130-blackwell` (default branch): `scripts/train_pytorch.py` training and low-latency serving; note the upstream PyTorch trainer has no LoRA/freeze support.
 
 openpi holds open-source models and packages for robotics, published by the [Physical Intelligence team](https://www.physicalintelligence.company/).
 

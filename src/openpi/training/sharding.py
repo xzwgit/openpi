@@ -38,16 +38,13 @@ def set_mesh(mesh: jax.sharding.Mesh):
 
 
 def activation_sharding_constraint(pytree):
-    if _MeshState.active_mesh is None:
-        return pytree
     # jax >= 0.10: NamedSharding over Explicit mesh axes is rejected by
-    # with_sharding_constraint ("can only refer to Auto axes"); a plain
-    # PartitionSpec resolves against the ambient AbstractMesh instead.
-    import os as _os
-
-    if _os.environ.get("OPENPI_SKIP_ACT_SHARDING") == "1":
-        return pytree
-    return jax.lax.with_sharding_constraint(pytree, jax.sharding.PartitionSpec(DATA_AXIS))
+    # with_sharding_constraint ("can only refer to Auto axes"), and a plain
+    # PartitionSpec resolves against the ambient AbstractMesh, which is empty
+    # inside flax axes_scan bodies (RuntimeError: non-empty mesh required).
+    # This constraint is a pure performance annotation, so degrade to a no-op
+    # until the branch moves to jax >= 0.11 (jax.lax.reshard, needs py>=3.12).
+    return pytree
 
 
 def fsdp_sharding(
