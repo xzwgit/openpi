@@ -20,6 +20,8 @@
 >
 > ⚠️ **The `cp` step hot-patches the installed `transformers`.** It must be **re-run whenever `transformers` is reinstalled or its version changes** (e.g. after `uv sync --reinstall`, a lockfile bump, or manually touching the package) — a plain `uv sync` keeps it intact as long as the locked `transformers==4.53.2` is unchanged. If you forget, PyTorch models fail fast at init with `transformers_replace is not installed correctly` (startup self-check via `transformers.models.siglip.check`). Only the PyTorch paths need this patch; JAX training/serving does not.
 >
+> ⚠️ **Serving tip:** PyTorch configs default to `pytorch_compile_mode='max-autotune'`. The **first inference request after server start triggers a long one-time torch.compile (can be 15–20 min on small GPUs)** — websocket clients with short keepalive (e.g. the example client, 20 s) will time out during it. Warm up the server with a throwaway request (or set a lower compile mode in the config) before connecting real clients. After compilation, latency is stable and on par with JAX.
+>
 > Note: the JAX stack stays at upstream pins (jax 0.5.3 + CUDA 12), which does **not** support Blackwell GPUs. On those machines use the PyTorch paths: `scripts/train_pytorch.py` for training and PyTorch-format checkpoints for serving (see "PyTorch Support" below).
 
 openpi holds open-source models and packages for robotics, published by the [Physical Intelligence team](https://www.physicalintelligence.company/).
