@@ -41,6 +41,31 @@ For all models, we provide _base model_ checkpoints, pre-trained on 10k+ hours o
 
 This is an experiment: $\pi_0$ was developed for our own robots, which differ from the widely used platforms such as [ALOHA](https://tonyzhaozh.github.io/aloha/) and [DROID](https://droid-dataset.github.io/), and though we are optimistic that researchers and practitioners will be able to run creative new experiments adapting $\pi_0$ to their own platforms, we do not expect every such attempt to be successful. All this is to say: $\pi_0$ may or may not work for you, but you are welcome to try it and see!
 
+## LoRA Fine-Tuning within 24 GB
+
+Verified on this branch: π0.5 LoRA **fits a 24 GB GPU** — capping JAX allocation to 23.6 GB still completes training at batch 8 *and* batch 32 on an RTX 4090 (a 10 GB cap OOMs; JAX full fine-tuning needs > 48 GB — use the `torch2.14-cu130-blackwell` branch or a 96 GB card for that).
+
+```bash
+# On this branch (jax-blackwell):
+GIT_LFS_SKIP_SMUDGE=1 uv sync
+cp -r ./src/openpi/models_pytorch/transformers_replace/* .venv/lib/python3.11/site-packages/transformers/
+
+# One-time: compute norm stats for your config (official flow), then train.
+uv run scripts/compute_norm_stats.py --config-name pi05_aloha_sim_bench_lora
+uv run scripts/train.py pi05_aloha_sim_bench_lora --exp_name my_lora_run
+```
+
+Two settings are **mandatory** in any LoRA `TrainConfig` (`pi05_aloha_sim_bench_lora` already has both):
+
+```python
+freeze_filter=pi0_config.Pi0Config(
+    pi05=True, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+).get_freeze_filter(),
+ema_decay=None,  # mirrors the upstream pi0_libero_low_mem_finetune recipe
+```
+
+Without them the trainer freezes nothing, builds AdamW state over all 3.35B parameters and keeps a full EMA copy — which OOMs even a 48 GB card. See the branch notice above for JAX ops notes (`env -u LD_LIBRARY_PATH`, cu13 package reinstall after `uv sync`).
+
 ## Updates
 
 - [Sept 2025] We released PyTorch support in openpi.
