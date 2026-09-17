@@ -322,6 +322,11 @@ def restore_params(
     with ocp.PyTreeCheckpointer() as ckptr:
         metadata = ckptr.metadata(params_path)
         if hasattr(metadata, "item_metadata"):  # orbax >= 0.12 returns StepMetadata
+            if metadata.item_metadata is None:
+                raise FileNotFoundError(
+                    f"No checkpoint metadata found at: {params_path} "
+                    "(checkpoint missing or incomplete; orbax returns empty StepMetadata for it)"
+                )
             item = {"params": metadata.item_metadata["params"]}
         else:  # orbax <= 0.11 returns a plain dict
             item = {"params": metadata["params"]}
