@@ -7,6 +7,8 @@
 > 1. `preprocessing_pytorch.py` could pass NHWC images to the SigLIP vision tower, which requires NCHW — crashed at training step 0 with `expected input to have 3 channels`.
 > 2. `gemma_pytorch.py` hardcoded `projection_dim = 2048`, breaking the `debug` smoke config (dummy PaliGemma variant uses width=64).
 >
+> Companion fork: **[xzwgit/lerobot](https://github.com/xzwgit/lerobot)** — Hugging Face LeRobot, the PyTorch-native robotics framework that openpi uses as a data-pipeline dependency.
+>
 > Install this fork:
 > ```bash
 > git clone -b torch2.14-cu130-blackwell https://github.com/xzwgit/openpi.git
