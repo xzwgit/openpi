@@ -1,7 +1,7 @@
 # openpi
 
 > [!IMPORTANT]
-> **Fork notice (xzwgit/openpi, branch `cu130-blackwell`)** — this branch switches the PyTorch stack to **torch 2.14.0+cu130** (torchvision 0.29.0 / torchaudio 2.11.0 / torchcodec 0.16.0, all sourced from the `pytorch-cu130` index) and fixes seven pre-existing bugs (PyTorch training path, JAX→PyTorch converter, and JAX/flax migration). It also upgrades the JAX stack to **jax[cuda13] 0.10.2** (flax 0.12.8 / orbax 0.12.4 / numpy 2, old 0.11-format checkpoints load as-is), so **one `uv sync` gives both paths on Blackwell**: PyTorch (fastest inference, full fine-tuning) and JAX (inference + LoRA fine-tuning that fits 24 GB). Targets **Blackwell GPUs** (RTX 5090, RTX PRO 6000 — `sm_120`/`sm_100` kernels included) and validated on RTX 4090 (sm_89) and RTX 3060 (sm_86).
+> **Fork notice (xzwgit/openpi, branch `cu130-blackwell`)** — this branch switches the PyTorch stack to **torch 2.14.0+cu130** (torchvision 0.29.0 / torchaudio 2.11.0 / torchcodec 0.16.0, all sourced from the `pytorch-cu130` index) and fixes eight pre-existing bugs (PyTorch training path, JAX→PyTorch converter, and JAX/flax migration). It also upgrades the JAX stack to **jax[cuda13] 0.10.2** (flax 0.12.8 / orbax 0.12.4 / numpy 2, old 0.11-format checkpoints load as-is), so **one `uv sync` gives both paths on Blackwell**: PyTorch (fastest inference, full fine-tuning) and JAX (inference + LoRA fine-tuning that fits 24 GB). Targets **Blackwell GPUs** (RTX 5090, RTX PRO 6000 — `sm_120`/`sm_100` kernels included) and validated on RTX 4090 (sm_89) and RTX 3060 (sm_86).
 >
 > Fixed bugs (all exist upstream):
 > 1. `preprocessing_pytorch.py` could pass NHWC images to the SigLIP vision tower, which requires NCHW — crashed at training step 0 with `expected input to have 3 channels`.
@@ -11,6 +11,7 @@
 > 5. `nnx_utils.state_map` used `flat_state()` / `State.map` APIs that changed in flax 0.12 — rewritten against the new flat-state API.
 > 6. `activation_sharding_constraint` trips jax>=0.10 mesh rules inside flax scans — degrades to a no-op (pure performance annotation).
 > 7. `models/model.py` needed the orbax 0.12 API for `metadata["params"]`.
+> 8. `scripts/train.py` step-0 camera-view logging indexed a **sharded** JAX array (jax>=0.10 `ShardingTypeError`) — now host-transfers first and only logs when `wandb_enabled`.
 >
 > Companion fork: **[xzwgit/lerobot](https://github.com/xzwgit/lerobot)** — Hugging Face LeRobot, the PyTorch-native robotics framework that openpi uses as a data-pipeline dependency.
 >
@@ -74,6 +75,21 @@ Real π0.5 model (3.35B params) on the official `lerobot/aloha_sim_transfer_cube
 
 > [!WARNING]
 > **The PyTorch trainer has no LoRA / freeze support (upstream gap).** `*_lora` variants are silently ignored — the `pi05_aloha_sim_bench_lora` config trains **all** parameters, with memory and throughput identical to full fine-tuning (verified empirically). Sub-24-GB LoRA fine-tuning only exists on the JAX path. Practical implication: a 24 GB GPU (e.g. RTX 5090D v2) is **inference-only** on the PyTorch path — the static training floor (weights + grads + bf16 optimizer states) is ~34 GB even at batch 8. If you need LoRA fine-tuning on a 24 GB GPU, use the JAX path on this same branch: the `pi05_aloha_sim_bench_lora` config fits 24 GB (verified by capping JAX allocation to 23.6 GB, batch 8 and batch 32).
+
+## Multi-GPU JAX Training (DDP vs FSDP)
+
+**Use `--fsdp_devices=1`** — that is N-GPU data parallelism (DDP): the batch is split across all visible devices, parameters are replicated per device, and jax inserts the gradient all-reduce. Measured on 8× RTX PRO 6000 (96 GB), π0.5 full fine-tuning, batch sweep:
+
+| Batch | s/step | Throughput |
+| --- | --- | --- |
+| 32 | 11.1 | ≈2.9 samples/s |
+| 64 | 9.5 | ≈6.7 samples/s |
+| 128 | 10.1 | ≈12.7 samples/s |
+| 256 | 12.3 | ≈20.8 samples/s |
+
+Per-step time is nearly flat (9.5–12.3 s) because it is dominated by cross-GPU gradient synchronization — larger batches are almost free throughput. If you raise the batch, scale the step count for the same sample budget (28k @ b32 ≈ 3.5k @ b256) and adjust the LR schedule (`warmup_steps`, `decay_steps`, and typically the peak LR).
+
+**True FSDP (`--fsdp_devices=N` with N>1) does not run on jax>=0.10.** Upstream's sharding annotations put the same mesh axis in two dimensions of one `NamedSharding` (`P(('batch', 'fsdp'), None, 'fsdp')`), which jax 0.10 rejects with `DuplicateSpecError` while tracing — independent of the Shardy/GSPMD partitioner setting. Supporting it requires reworking the sharding annotations (e.g. separate `dp`/`fsdp` mesh axes); not done in this fork. With replicated parameters a 96 GB card still has plenty of headroom for π0.5 full fine-tuning (≈40 GB actual use), so DDP suffices; use the JAX LoRA path (below) when memory is tight.
 
 ## LoRA Fine-Tuning within 24 GB (JAX path)
 
