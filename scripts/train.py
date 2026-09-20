@@ -228,10 +228,13 @@ def main(config: _config.TrainConfig):
 
     # Log images from first batch to sanity check.
     images_to_log = [
-        wandb.Image(np.concatenate([np.array(img[i]) for img in batch[0].images.values()], axis=1))
+        # np.asarray first: indexing a sharded JAX array makes jax>=0.10 raise
+        # ShardingTypeError (gather output sharding cannot be inferred).
+        wandb.Image(np.concatenate([np.asarray(img)[i] for img in batch[0].images.values()], axis=1))
         for i in range(min(5, len(next(iter(batch[0].images.values())))))
     ]
-    wandb.log({"camera_views": images_to_log}, step=0)
+    if config.wandb_enabled:
+        wandb.log({"camera_views": images_to_log}, step=0)
 
     train_state, train_state_sharding = init_train_state(config, init_rng, mesh, resume=resuming)
     jax.block_until_ready(train_state)
