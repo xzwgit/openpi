@@ -82,8 +82,16 @@ def fsdp_sharding(
         if (arr_size := np.prod(array.shape) * np.dtype(array.dtype).itemsize) < min_size_bytes:
             return jax.sharding.NamedSharding(mesh, jax.sharding.PartitionSpec())
 
-        # shard matrices and larger tensors along the largest axis that is divisible by the fsdp dimension
-        axes = np.argsort(array.shape)[::-1]
+        # Shard on the largest divisible axis EXCLUDING the last axis. All Dense /
+        # DenseGeneral / einsum kernels in this codebase follow the flax convention
+        # [..., in, out], so the last axis is the OUTPUT dim. With data sharded over
+        # (batch, fsdp) [HSDP], sharding an output dim makes dot_general results carry
+        # the fsdp axis in two dimensions, which jax >= 0.10 rejects
+        # (DuplicateSpecError / "illegally sharded result"). Any non-output axis is a
+        # contraction/batch dim of the weight: XLA inserts an all-gather there
+        # (classic FSDP) and the result sharding stays unambiguous.
+        ndim = len(array.shape)
+        axes = [int(i) for i in np.argsort(array.shape)[::-1] if i != ndim - 1]
         spec = [None] * len(axes)
         for i in axes:
             if array.shape[i] % mesh.shape[FSDP_AXIS] == 0:
