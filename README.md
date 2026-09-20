@@ -76,9 +76,9 @@ Real π0.5 model (3.35B params) on the official `lerobot/aloha_sim_transfer_cube
 > [!WARNING]
 > **The PyTorch trainer has no LoRA / freeze support (upstream gap).** `*_lora` variants are silently ignored — the `pi05_aloha_sim_bench_lora` config trains **all** parameters, with memory and throughput identical to full fine-tuning (verified empirically). Sub-24-GB LoRA fine-tuning only exists on the JAX path. Practical implication: a 24 GB GPU (e.g. RTX 5090D v2) is **inference-only** on the PyTorch path — the static training floor (weights + grads + bf16 optimizer states) is ~34 GB even at batch 8. If you need LoRA fine-tuning on a 24 GB GPU, use the JAX path on this same branch: the `pi05_aloha_sim_bench_lora` config fits 24 GB (verified by capping JAX allocation to 23.6 GB, batch 8 and batch 32).
 
-## Multi-GPU JAX Training (DDP vs FSDP)
+## Multi-GPU JAX Training (DDP and FSDP both work)
 
-**Use `--fsdp_devices=1`** — that is N-GPU data parallelism (DDP): the batch is split across all visible devices, parameters are replicated per device, and jax inserts the gradient all-reduce. Measured on 8× RTX PRO 6000 (96 GB), π0.5 full fine-tuning, batch sweep:
+**DDP: `--fsdp_devices=1`** — N-GPU data parallelism (batch split across devices, replicated params, gradient all-reduce). Batch sweep on 8× RTX PRO 6000, π0.5 full fine-tuning:
 
 | Batch | s/step | Throughput |
 | --- | --- | --- |
@@ -87,9 +87,18 @@ Real π0.5 model (3.35B params) on the official `lerobot/aloha_sim_transfer_cube
 | 128 | 10.1 | ≈12.7 samples/s |
 | 256 | 12.3 | ≈20.8 samples/s |
 
-Per-step time is nearly flat (9.5–12.3 s) because it is dominated by cross-GPU gradient synchronization — larger batches are almost free throughput. If you raise the batch, scale the step count for the same sample budget (28k @ b32 ≈ 3.5k @ b256) and adjust the LR schedule (`warmup_steps`, `decay_steps`, and typically the peak LR).
+Per-step time is nearly flat because it is dominated by cross-GPU gradient synchronization — larger batches are almost free throughput. If you raise the batch, scale the step count for the same sample budget (28k @ b32 ≈ 3.5k @ b256) and adjust the LR schedule.
 
-**True FSDP (`--fsdp_devices=N` with N>1) does not run on jax>=0.10.** Upstream's sharding annotations put the same mesh axis in two dimensions of one `NamedSharding` (`P(('batch', 'fsdp'), None, 'fsdp')`), which jax 0.10 rejects with `DuplicateSpecError` while tracing — independent of the Shardy/GSPMD partitioner setting. Supporting it requires reworking the sharding annotations (e.g. separate `dp`/`fsdp` mesh axes); not done in this fork. With replicated parameters a 96 GB card still has plenty of headroom for π0.5 full fine-tuning (≈40 GB actual use), so DDP suffices; use the JAX LoRA path (below) when memory is tight.
+**FSDP: `--fsdp_devices=N` (N>1) works as of commit b99575d.** Upstream's sharding put weights on their largest divisible axis, which is the OUTPUT dim of flax `[..., in, out]` kernels; combined with data sharded over `(batch, fsdp)` this made `dot_general` results carry the `fsdp` axis twice (jax >= 0.10 `DuplicateSpecError`). The fix shards weights on the largest divisible **non-output** axis, so every shard lands on a contraction dim and XLA inserts the classic FSDP all-gather. Verified on 8× RTX PRO 6000 (π0.5 full fine-tuning):
+
+| | FSDP (`fsdp_devices=8`) | DDP (`fsdp_devices=1`) |
+| --- | --- | --- |
+| runs | ✅ 2-GPU and 8-GPU end to end | ✅ |
+| step-0 loss (b32, vs DDP) | 0.1305 vs 0.1304 (bf16 noise) | reference |
+| step time (b32) | 9.5 s | 11.1 s |
+| **actual VRAM / GPU** | **33.4 GiB** | 88.5 GiB |
+
+FSDP also **lowers the full-fine-tuning VRAM floor**: DDP needs ~88 GiB per GPU (does not fit 48 GB cards), FSDP ~33 GiB. Sharded checkpoint save + resume verified.
 
 ## LoRA Fine-Tuning within 24 GB (JAX path)
 
